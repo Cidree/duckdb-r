@@ -307,6 +307,10 @@ string RApiTypes::DetectLogicalType(const LogicalType &stype, const char *caller
 		return "character";
 	}
 
+	if (stype.GetAlias() == "GEOMETRY") {
+		return "raw";
+	}
+
 	switch (stype.id()) {
 	case LogicalTypeId::BOOLEAN:
 		return "logical";

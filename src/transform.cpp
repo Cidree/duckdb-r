@@ -25,6 +25,10 @@ int duckdb_r_typeof(const LogicalType &type, const string &name, const char *cal
 		return STRSXP;
 	}
 
+	if (type.GetAlias() == "GEOMETRY") {
+		return VECSXP;  // same as BLOB
+	}
+
 	switch (type.id()) {
 	case LogicalTypeId::BOOLEAN:
 		return LGLSXP;
@@ -192,6 +196,10 @@ std::once_flag nanosecond_coercion_warning;
 void duckdb_r_decorate(const LogicalType &type, const SEXP dest, const duckdb::ConvertOpts &convert_opts) {
 	if (type.GetAlias() == R_STRING_TYPE_NAME) {
 		return;
+	}
+
+	if (type.GetAlias() == "GEOMETRY") {
+		return;  // no decoration needed, same as BLOB
 	}
 
 	switch (type.id()) {
@@ -380,6 +388,24 @@ void duckdb_r_transform(const Vector &src_vec, const SEXP dest, idx_t dest_offse
 				SET_STRING_ELT(dest, dest_offset + row_idx, NA_STRING);
 			} else {
 				SET_STRING_ELT(dest, dest_offset + row_idx, (SEXP)((data_ptr_t)child_ptr[row_idx] - sexp_header_size));
+			}
+		}
+		return;
+	}
+
+	if (src_vec.GetType().GetAlias() == "GEOMETRY") {
+		auto src_ptr = FlatVector::GetData<string_t>(src_vec);
+		auto &mask = FlatVector::Validity(src_vec);
+		for (size_t row_idx = 0; row_idx < n; row_idx++) {
+			if (!mask.RowIsValid(row_idx)) {
+				SET_VECTOR_ELT(dest, dest_offset + row_idx, R_NilValue);
+			} else {
+				SEXP rawval = NEW_RAW(src_ptr[row_idx].GetSize());
+				if (!rawval) {
+					throw std::bad_alloc();
+				}
+				memcpy(RAW_POINTER(rawval), src_ptr[row_idx].GetData(), src_ptr[row_idx].GetSize());
+				SET_VECTOR_ELT(dest, dest_offset + row_idx, rawval);
 			}
 		}
 		return;
